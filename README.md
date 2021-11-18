@@ -26,9 +26,9 @@ echo 10 > test/d/f
 ## Installation
 
 ```bash
-$ git clone https://github.com/CourrierGui/autorun
-$ cd autorun
-$ meson setup build
-$ ninja -C build
-# ninja -C build install
+$> git clone https://github.com/CourrierGui/autorun
+$> cd autorun
+$> meson setup build
+$> ninja -C build
+#> ninja -C build install
 ```
