@@ -154,7 +154,7 @@ cli_option parse_opt(int argc, char *argv[])
     int option_index, opt;
     cli_option cli;
 
-    while ((opt = getopt_long(argc, argv, "d:", cmd_args, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "d:f:", cmd_args, &option_index)) != -1) {
         switch (opt) {
             case 'd':
                 cli.is_dir = true;
