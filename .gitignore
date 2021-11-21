@@ -1,5 +1,5 @@
 build
-tags
+tags*
 compile_commands.json
 .cache
 TODO.md

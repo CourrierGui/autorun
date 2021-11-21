@@ -11,6 +11,7 @@
 #include <vector>
 #include <functional>
 #include <getopt.h>
+#include <map>
 
 #include "config.h"
 
@@ -33,11 +34,16 @@ class inotify {
             _infd = inotify_init1(0);
         }
 
+        bool add_watch(const std::string& filename)
+        {
+            return add_watch(filename.c_str());
+        }
+
         bool add_watch(const char *filename)
         {
             int wd = inotify_add_watch(_infd, filename,
                                        IN_MOVE | IN_MODIFY| IN_CREATE | IN_DELETE);
-            _watches.push_back(wd);
+            _watches[wd] = filename;
             return wd >= 0;
         }
 
@@ -46,17 +52,22 @@ class inotify {
             return _infd;
         }
 
+        auto get_file(int wd) -> const std::string&
+        {
+            return _watches[wd];
+        }
+
         ~inotify()
         {
             for (auto wd: _watches)
-                inotify_rm_watch(_infd, wd);
+                inotify_rm_watch(_infd, wd.first);
 
             if (close(_infd) == -1)
                 error(errno, "close");
         }
 
     private:
-        std::vector<int> _watches;
+        std::map<int, std::string> _watches;
         int _infd;
 };
 
@@ -267,13 +278,17 @@ bool on_event(inotify& in, cli_option& cli_opts, struct epoll_event *e)
         return false;
 
     event = reinterpret_cast<struct inotify_event *>(buf);
+
     if (event->mask & IN_IGNORED)
         /* FIXME wont work if ignored is sent in a dir */
         in.add_watch(cli_opts.basename.c_str());
 
+    if (event->mask & (IN_CREATE | IN_ISDIR) && cli_opts.is_dir)
+        in.add_watch(in.get_file(event->wd) + '/' + event->name);
+
     if constexpr (debug) {
         std::clog << "Event: " << inotify_event2str(event) << '\n';
-        std::clog << "Event: " << event->mask << '\n';
+        std::clog << "Name: " << in.get_file(event->wd) + '/' + event->name << '\n';
     }
 
     /* XXX what to do with rc ? */
