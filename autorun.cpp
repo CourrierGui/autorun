@@ -151,12 +151,12 @@ void version(const char *progname)
 
 void usage(const char *progname)
 {
-    std::clog << progname << R"( [--file|-f <filename>] [--dir|-d <dirname>] <cmd>
+    std::clog << progname << R"( [--file|-f <filenames>] [--dir|-d <dirnames>] <cmd>
 
     --help|-h    display this message
     --version|-v current version
-    --file|-f    name of the file whose events will trigger <cmd>
-    --dir|-d     all events on files and directories inside <dirname> will trigger <cmd>
+    --file|-f    name of the files whose events will trigger <cmd>
+    --dir|-d     all events on files and directories inside <dirnames> will trigger <cmd>
                  (autorun will watch . by default)
     <cmd>        the command that will be run when an event is detected)"
     << '\n';
@@ -171,25 +171,33 @@ constexpr struct option cmd_args[] = {
 };
 
 struct cli_option {
-    std::string basename;
+    std::vector<std::string> filenames;
+    std::vector<std::string> dirnames;
     std::string cmd;
-    bool is_dir = false;
 };
 
 cli_option parse_opt(int argc, char *argv[])
 {
+    bool parse_dir = false;
     int option_index, opt;
     cli_option cli;
-    cli.basename = ".";
-    cli.is_dir = true;
 
-    while ((opt = getopt_long(argc, argv, "d:f:hv", cmd_args, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "-f:-d:hv", cmd_args, &option_index)) != -1) {
         switch (opt) {
             case 'd':
-                cli.is_dir = true;
-                [[fallthrough]];
+                parse_dir = true;
+                cli.dirnames.push_back(optarg);
+                break;
             case 'f':
-                cli.basename = optarg;
+                // FIXME make sure that optarg is not a directory
+                parse_dir = false;
+                cli.filenames.push_back(optarg);
+                break;
+            case 1:
+                if (parse_dir)
+                    cli.dirnames.push_back(optarg);
+                else
+                    cli.filenames.push_back(optarg);
                 break;
             case 'v':
                 version(argv[0]);
@@ -203,6 +211,9 @@ cli_option parse_opt(int argc, char *argv[])
                 exit(1);
         }
     }
+
+    if (cli.dirnames.size() == 0 && cli.filenames.size() == 0)
+        cli.dirnames.push_back(".");
 
     if (optind < argc) {
         char **iter = argv + optind;
@@ -281,14 +292,17 @@ bool on_event(inotify& in, cli_option& cli_opts, struct epoll_event *e)
 
     if (event->mask & IN_IGNORED)
         /* FIXME wont work if ignored is sent in a dir */
-        in.add_watch(cli_opts.basename.c_str());
+        in.add_watch(in.get_file(event->wd));
 
-    if (event->mask & (IN_CREATE | IN_ISDIR) && cli_opts.is_dir)
+    if (event->mask & (IN_CREATE | IN_ISDIR))
         in.add_watch(in.get_file(event->wd) + '/' + event->name);
 
     if constexpr (debug) {
         std::clog << "Event: " << inotify_event2str(event) << '\n';
-        std::clog << "Name: " << in.get_file(event->wd) + '/' + event->name << '\n';
+        std::clog << "Name: " << in.get_file(event->wd);
+        if (event->mask & IN_ISDIR)
+            std::clog << '/' << event->name;
+        std::clog << '\n';
     }
 
     /* XXX what to do with rc ? */
@@ -298,13 +312,16 @@ bool on_event(inotify& in, cli_option& cli_opts, struct epoll_event *e)
 
 int watch_dir(const cli_option& cli_opts, inotify& in)
 {
-    char *const rootname[] = {
-        strdup(cli_opts.basename.c_str()),
-        nullptr
-    };
+    std::vector<char *> rootname;
     FTS *root;
 
-    root = fts_open(rootname, FTS_PHYSICAL | FTS_NOSTAT | FTS_NOCHDIR, nullptr);
+    rootname.resize(cli_opts.dirnames.size() + 1);
+    auto iter = rootname.begin();
+    for (auto dir: cli_opts.dirnames)
+        *iter++ = strdup(dir.c_str());
+    *iter  = nullptr;
+
+    root = fts_open(&rootname[0], FTS_PHYSICAL | FTS_NOSTAT | FTS_NOCHDIR, nullptr);
     if (!root) {
         error(errno, "fts_open");
         return -1;
@@ -313,12 +330,20 @@ int watch_dir(const cli_option& cli_opts, inotify& in)
     traverse(root, in);
     fts_close(root);
 
+    for (auto dir: rootname)
+        free(dir);
+
     return 0;
 }
 
 int watch_file(const cli_option& cli_opts, inotify& in)
 {
-    return in.add_watch(cli_opts.basename.c_str()) ? 0 : -1;
+    for (auto f: cli_opts.filenames) {
+        bool rc = in.add_watch(f.c_str());
+        if (rc)
+            return -1;
+    }
+    return 0;
 }
 
 void clear_screen()
@@ -332,22 +357,34 @@ int main(int argc, char *argv[])
     auto cli_opts = parse_opt(argc, argv);
     inotify in;
     epoll ep;
-    int rc;
+    int rc = 0;
 
-    if (cli_opts.is_dir)
+    if (cli_opts.dirnames.size()) {
         rc = watch_dir(cli_opts, in);
-    else
-        rc = watch_file(cli_opts, in);
+        if (rc) {
+            error(errno, "watch_dir");
+            return errno;
+        }
 
-    if (rc)
-        return errno;
+    }
+
+    if (cli_opts.dirnames.size()) {
+        rc = watch_file(cli_opts, in);
+        if (!rc) {
+            error(errno, "watch_file");
+            return errno;
+        }
+    }
+    std::clog << "start\n";
 
     ep.add(in.fd());
 
-    clear_screen();
+    if constexpr (!debug)
+        clear_screen();
 
     ep.wait([&in, &cli_opts](struct epoll_event *e) -> bool {
-        clear_screen();
+        if constexpr (!debug)
+            clear_screen();
         return on_event(in, cli_opts, e);
     });
 
