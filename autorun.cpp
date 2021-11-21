@@ -12,13 +12,9 @@
 #include <functional>
 #include <getopt.h>
 
-#ifdef DEBUG
-#define DEBUG_VAL true
-#else
-#define DEBUG_VAL false
-#endif
+#include "config.h"
 
-constexpr bool debug = DEBUG_VAL;
+constexpr bool debug = DEBUG;
 
 void error(int rc, const char *msg)
 {
@@ -137,21 +133,29 @@ int run_cmd(const char *cmd)
     return system(cmd);
 }
 
+void version(const char *progname)
+{
+    std::clog << progname << " version " VERSION "\n";
+}
+
 void usage(const char *progname)
 {
     std::clog << progname << R"( [--file|-f <filename>] [--dir|-d <dirname>] <cmd>
 
-    --file|-f  name of the file whose events will trigger <cmd>
-    --dir|-d   all events on files and directories inside <dirname> will trigger <cmd>
-    <cmd>      the command that will be run when an event is detected)"
+    --help|-h    display this message
+    --version|-v current version
+    --file|-f    name of the file whose events will trigger <cmd>
+    --dir|-d     all events on files and directories inside <dirname> will trigger <cmd>
+    <cmd>        the command that will be run when an event is detected)"
     << '\n';
 }
 
 constexpr struct option cmd_args[] = {
-    { "dir",   required_argument, nullptr, 'd', },
-    { "file",  required_argument, nullptr, 'f', },
-    { "help",  no_argument,       nullptr, 'h', },
-    { nullptr, no_argument,       nullptr, '\0' },
+    { "dir",     required_argument, nullptr, 'd', },
+    { "file",    required_argument, nullptr, 'f', },
+    { "help",    no_argument,       nullptr, 'h', },
+    { "version", no_argument,       nullptr, 'v', },
+    { nullptr,   no_argument,       nullptr, '\0' },
 };
 
 struct cli_option {
@@ -165,7 +169,7 @@ cli_option parse_opt(int argc, char *argv[])
     int option_index, opt;
     cli_option cli;
 
-    while ((opt = getopt_long(argc, argv, "d:f:h", cmd_args, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "d:f:hv", cmd_args, &option_index)) != -1) {
         switch (opt) {
             case 'd':
                 cli.is_dir = true;
@@ -173,6 +177,9 @@ cli_option parse_opt(int argc, char *argv[])
             case 'f':
                 cli.basename = optarg;
                 break;
+            case 'v':
+                version(argv[0]);
+                exit(0);
             case 'h':
                 usage(argv[0]);
                 exit(0);
