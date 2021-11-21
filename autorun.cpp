@@ -146,6 +146,7 @@ void usage(const char *progname)
     --version|-v current version
     --file|-f    name of the file whose events will trigger <cmd>
     --dir|-d     all events on files and directories inside <dirname> will trigger <cmd>
+                 (autorun will watch . by default)
     <cmd>        the command that will be run when an event is detected)"
     << '\n';
 }
@@ -168,6 +169,8 @@ cli_option parse_opt(int argc, char *argv[])
 {
     int option_index, opt;
     cli_option cli;
+    cli.basename = ".";
+    cli.is_dir = true;
 
     while ((opt = getopt_long(argc, argv, "d:f:hv", cmd_args, &option_index)) != -1) {
         switch (opt) {
