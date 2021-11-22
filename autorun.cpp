@@ -124,9 +124,9 @@ void traverse(FTS *iter, inotify& in)
     FTSENT *file;
 
     while ((file = fts_read(iter)) != nullptr) {
-        if constexpr (debug) {
+        if constexpr (debug)
             std::clog << iter->fts_path << '\n';
-        }
+
         bool res = in.add_watch(iter->fts_path);
         if (!res) {
             auto msg = std::string{"inotify::add_watch "};
