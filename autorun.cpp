@@ -1,5 +1,6 @@
 #include <sys/inotify.h>
 #include <sys/epoll.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <fts.h>
@@ -176,6 +177,54 @@ struct cli_option {
     std::string cmd;
 };
 
+bool is_dir(const char *filename)
+{
+    struct stat st;
+
+    if (stat(filename, &st) == 0 && S_ISDIR(st.st_mode))
+        return true;
+    else
+        return false;
+}
+
+bool is_reg(const char *filename)
+{
+    struct stat st;
+
+    if (stat(filename, &st) == 0 && S_ISREG(st.st_mode))
+        return true;
+    else
+        return false;
+}
+
+void add_dir(const char *dirname, std::vector<std::string>& dirnames)
+{
+    if (is_dir(dirname)) {
+        dirnames.push_back(dirname);
+    } else {
+        if (errno == ENOENT)
+            error(errno, dirname);
+        else
+            std::cerr << "autorun: " << optarg << " is not a directory.\n";
+
+        exit(1);
+    }
+}
+
+void add_file(const char *filename, std::vector<std::string>& filenames)
+{
+    if (is_reg(filename)) {
+        filenames.push_back(filename);
+    } else {
+        if (errno == ENOENT)
+            error(errno, filename);
+        else
+            std::cerr << "autorun: " << optarg << " is not a file.\n";
+
+        exit(1);
+    }
+}
+
 cli_option parse_opt(int argc, char *argv[])
 {
     bool parse_dir = false;
@@ -186,18 +235,17 @@ cli_option parse_opt(int argc, char *argv[])
         switch (opt) {
             case 'd':
                 parse_dir = true;
-                cli.dirnames.push_back(optarg);
+                add_dir(optarg, cli.dirnames);
                 break;
             case 'f':
-                // FIXME make sure that optarg is not a directory
                 parse_dir = false;
-                cli.filenames.push_back(optarg);
+                add_file(optarg, cli.filenames);
                 break;
             case 1:
                 if (parse_dir)
-                    cli.dirnames.push_back(optarg);
+                    add_dir(optarg, cli.dirnames);
                 else
-                    cli.filenames.push_back(optarg);
+                    add_file(optarg, cli.filenames);
                 break;
             case 'v':
                 version(argv[0]);
@@ -281,7 +329,7 @@ bool on_event(inotify& in, cli_option& cli_opts, struct epoll_event *e)
     int rc = read(e->data.fd, buf, sizeof(buf) - 1);
     if constexpr (debug) {
         std::clog
-            << "Read rc=" << rc
+            << "read: rc=" << rc
             << ", sizeof(struct inotify_event)=" << sizeof(struct inotify_event)
             << ", sizeof(buf)-1=" << sizeof(buf)-1 << '\n';
     }
@@ -291,7 +339,6 @@ bool on_event(inotify& in, cli_option& cli_opts, struct epoll_event *e)
     event = reinterpret_cast<struct inotify_event *>(buf);
 
     if (event->mask & IN_IGNORED)
-        /* FIXME wont work if ignored is sent in a dir */
         in.add_watch(in.get_file(event->wd));
 
     if (event->mask & (IN_CREATE | IN_ISDIR))
@@ -319,7 +366,7 @@ int watch_dir(const cli_option& cli_opts, inotify& in)
     auto iter = rootname.begin();
     for (auto dir: cli_opts.dirnames)
         *iter++ = strdup(dir.c_str());
-    *iter  = nullptr;
+    *iter = nullptr;
 
     root = fts_open(&rootname[0], FTS_PHYSICAL | FTS_NOSTAT | FTS_NOCHDIR, nullptr);
     if (!root) {
@@ -336,14 +383,14 @@ int watch_dir(const cli_option& cli_opts, inotify& in)
     return 0;
 }
 
-int watch_file(const cli_option& cli_opts, inotify& in)
+bool watch_file(const cli_option& cli_opts, inotify& in)
 {
     for (auto f: cli_opts.filenames) {
         bool rc = in.add_watch(f.c_str());
         if (rc)
-            return -1;
+            return false;
     }
-    return 0;
+    return true;
 }
 
 void clear_screen()
@@ -375,8 +422,6 @@ int main(int argc, char *argv[])
             return errno;
         }
     }
-    std::clog << "start\n";
-
     ep.add(in.fd());
 
     if constexpr (!debug)
