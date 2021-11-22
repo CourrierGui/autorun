@@ -202,7 +202,7 @@ void add_dir(const char *dirname, std::vector<std::string>& dirnames)
     if (is_dir(dirname)) {
         dirnames.push_back(dirname);
     } else {
-        if (errno == ENOENT)
+        if (errno)
             error(errno, dirname);
         else
             std::cerr << "autorun: " << optarg << " is not a directory.\n";
@@ -216,7 +216,7 @@ void add_file(const char *filename, std::vector<std::string>& filenames)
     if (is_reg(filename)) {
         filenames.push_back(filename);
     } else {
-        if (errno == ENOENT)
+        if (errno)
             error(errno, filename);
         else
             std::cerr << "autorun: " << optarg << " is not a file.\n";
