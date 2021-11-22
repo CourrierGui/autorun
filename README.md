@@ -11,13 +11,13 @@ autorun [--file <filename> | --dir <dirname>] <cmd>
 
 For example:
 ```bash
-autorun --file example.txt -- echo "An event occured on example.txt"
+autorun --file autorun.cpp meson.build config.h.in -- ninja -C build
 autorun --dir test -- echo "An event occured in test"
 ```
 
 Any of the following commands will trigger the command `<cmd>`:
 ```bash
-echo 10 > example.txt
+echo "// 10" >> autorun.cpp
 mkdir test/d
 touch test/d/f
 echo 10 > test/d/f
@@ -25,10 +25,10 @@ echo 10 > test/d/f
 
 ## Installation
 
-```bash
-$> git clone https://github.com/CourrierGui/autorun
-$> cd autorun
-$> meson setup build
-$> ninja -C build
-#> ninja -C build install
+```
+$ git clone https://github.com/CourrierGui/autorun
+$ cd autorun
+$ meson setup build
+$ ninja -C build
+# ninja -C build install
 ```

@@ -387,7 +387,7 @@ bool watch_file(const cli_option& cli_opts, inotify& in)
 {
     for (auto f: cli_opts.filenames) {
         bool rc = in.add_watch(f.c_str());
-        if (rc)
+        if (!rc)
             return false;
     }
     return true;
@@ -406,7 +406,7 @@ int main(int argc, char *argv[])
     epoll ep;
     int rc = 0;
 
-    if (cli_opts.dirnames.size()) {
+    if (!cli_opts.dirnames.empty()) {
         rc = watch_dir(cli_opts, in);
         if (rc) {
             error(errno, "watch_dir");
@@ -415,7 +415,7 @@ int main(int argc, char *argv[])
 
     }
 
-    if (cli_opts.dirnames.size()) {
+    if (!cli_opts.filenames.empty()) {
         rc = watch_file(cli_opts, in);
         if (!rc) {
             error(errno, "watch_file");
